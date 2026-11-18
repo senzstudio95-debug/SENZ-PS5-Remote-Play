@@ -24,6 +24,11 @@ jobs:
           Expand-Archive incoming/SENZPSN-0.1.0-preview-windows-x64.zip stage/SENZPSN/dist
           $app = 'stage/SENZPSN/dist/SENZPSN'
           Remove-Item "$app/SOURCE.zip" -ErrorAction SilentlyContinue
+          python -c "import urllib.request,hashlib,tarfile,io,pathlib; import compression.zstd as z; b=urllib.request.urlopen('https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-vulkan-loader-1~1.4.363.0-1-any.pkg.tar.zst').read(); assert hashlib.sha256(b).hexdigest()=='281fa31b1a023485d4fd04a092a8b5e9ca2f59804df7fcf9f2d4e5aaa5438af0'; t=tarfile.open(fileobj=io.BytesIO(z.decompress(b))); pathlib.Path('stage/SENZPSN/dist/SENZPSN/vulkan-1.dll').write_bytes(t.extractfile('mingw64/bin/vulkan-1.dll').read())"
+          if ($LASTEXITCODE -ne 0) { throw 'Vulkan runtime integrity check failed' }
+          $deploy = 'stage/SENZPSN/scripts/deploy-windows-msys2.sh'
+          (Get-Content $deploy -Raw).Replace('skip_dlls=("vulkan-1.dll")','skip_dlls=()') | Set-Content $deploy -Encoding utf8
+
           $notes = @'
           SENZPSN 0.1 Windows Preview
           ==========================
