@@ -16,6 +16,8 @@ jobs:
       - name: Prepare pinned SENZPSN source
         shell: pwsh
         run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
           git clone https://github.com/chiaki-ng/chiaki-ng.git source
           if ($LASTEXITCODE -ne 0) { throw 'Source checkout failed' }
           git -C source checkout 43728af2e639fecb8a7af1cd68c29820a40de973
