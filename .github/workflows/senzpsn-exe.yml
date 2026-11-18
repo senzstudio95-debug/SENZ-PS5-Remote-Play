@@ -34,7 +34,7 @@ jobs:
           $g = [System.Drawing.Graphics]::FromImage($bitmap)
           $g.Clear([System.Drawing.Color]::FromArgb(20,26,28))
           $font = New-Object System.Drawing.Font 'Arial',150,([System.Drawing.FontStyle]::Bold),([System.Drawing.GraphicsUnit]::Pixel)
-          $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(186,255,85))
+          $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(56,175,255))
           $g.DrawString('S',$font,$brush,55,35)
           $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
           $file = [System.IO.File]::Create((Join-Path $PWD 'source/gui/chiaking.ico'))
@@ -64,13 +64,12 @@ jobs:
           if (-not (Test-Path $compiler)) { throw 'Inno Setup unavailable' }
           & $compiler source\senz\SENZPSN.iss
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
-          Get-FileHash source\dist\SENZPSN-Setup-0.1.0-preview.exe -Algorithm SHA256 | Format-List | Out-File source\dist\INSTALLER-SHA256.txt
+          Get-FileHash source\dist\SENZPSN-Setup-0.2.0-preview.exe -Algorithm SHA256 | Format-List | Out-File source\dist\INSTALLER-SHA256.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: SENZPSN-Windows-EXE
           path: |
             source/dist/*.exe
-            source/dist/*.zip
-            source/dist/*SHA256*.txt
+            source/dist/INSTALLER-SHA256.txt
           if-no-files-found: error
           retention-days: 14
