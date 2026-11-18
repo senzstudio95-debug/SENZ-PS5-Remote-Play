@@ -1,0 +1,38 @@
+name: Check SENZPSN 0.2
+on:
+  push:
+    branches: [codex/senzpsn-windows-build]
+    paths: [.github/workflows/check-preview-ui.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  check:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: SENZPSN-Windows-EXE
+          run-id: 44282269884
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP 'SENZPSN'
+          $setup = Get-Item SENZPSN-Setup-0.2.0-preview.exe
+          $p = Start-Process $setup.FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$dest`"" -PassThru -Wait
+          if ($p.ExitCode) { throw 'Install failed' }
+          $env:QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES='1'
+          $app = Join-Path $dest 'SENZPSN.exe'
+          $p = Start-Process $app -ArgumentList '--help' -Wait -PassThru
+          if ($p.ExitCode) { throw 'Executable failed' }
+          $icd = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft\Edge\Application" -Recurse -Filter vk_swiftshader_icd.json | Select-Object -First 1
+          if (!$icd) { throw 'Software Vulkan device unavailable' }
+          $env:VK_DRIVER_FILES=$icd.FullName
+          $env:QT_FORCE_STDERR_LOGGING='1'
+          $p = Start-Process $app -PassThru -RedirectStandardError errors.txt
+          Start-Sleep 15
+          $p.Refresh()
+          Get-Content errors.txt -Tail 40
+          if ($p.HasExited -or !$p.MainWindowHandle) { throw 'Application window unavailable' }
+          Write-Output "Opened $($p.MainWindowTitle)"
+          Stop-Process -Id $p.Id
