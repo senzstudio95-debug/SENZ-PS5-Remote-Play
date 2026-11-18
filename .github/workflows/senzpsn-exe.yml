@@ -43,7 +43,12 @@ jobs:
         with:
           msystem: MINGW64
           update: true
-          install: git
+          install: git zip
+          pacboy: >-
+            ca-certificates:p gcc:p cmake:p ninja:p pkgconf:p python:p
+            python-protobuf:p protobuf:p qt6-base:p qt6-declarative:p qt6-svg:p
+            ffmpeg:p libplacebo:p SDL2:p openssl:p opus:p json-c:p
+            libevent:p miniupnpc:p speexdsp:p
       - name: Compile and test Windows application
         shell: msys2 {0}
         run: |
