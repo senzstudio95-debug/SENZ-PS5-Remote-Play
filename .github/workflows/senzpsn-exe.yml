@@ -1,0 +1,68 @@
+name: SENZPSN Windows EXE
+on:
+  push:
+    branches: [codex/senzpsn-windows-build]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare pinned SENZPSN source
+        shell: pwsh
+        run: |
+          git clone https://github.com/chiaki-ng/chiaki-ng.git source
+          if ($LASTEXITCODE -ne 0) { throw 'Source checkout failed' }
+          git -C source checkout 43728af2e639fecb8a7af1cd68c29820a40de973
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned revision not available' }
+          python -c "import base64,gzip,pathlib; pathlib.Path('senzpsn.patch').write_bytes(gzip.decompress(base64.b64decode(pathlib.Path('senzpsn.patch.gz.b64').read_bytes())))"
+          git -C source apply --binary ../senzpsn.patch
+          if ($LASTEXITCODE -ne 0) { throw 'SENZPSN patch failed' }
+          Copy-Item senz-icon.svg source/gui/res/chiaking.svg
+          Copy-Item senz-icon.svg source/gui/res/chiaking-logo.svg
+          Copy-Item senz-icon.svg source/gui/res/chiaking-logo-white.svg
+          Add-Type -AssemblyName System.Drawing
+          $bitmap = New-Object System.Drawing.Bitmap 256,256
+          $g = [System.Drawing.Graphics]::FromImage($bitmap)
+          $g.Clear([System.Drawing.Color]::FromArgb(20,26,28))
+          $font = New-Object System.Drawing.Font 'Arial',150,([System.Drawing.FontStyle]::Bold),([System.Drawing.GraphicsUnit]::Pixel)
+          $brush = New-Object System.Drawing.SolidBrush ([System.Drawing.Color]::FromArgb(186,255,85))
+          $g.DrawString('S',$font,$brush,55,35)
+          $icon = [System.Drawing.Icon]::FromHandle($bitmap.GetHicon())
+          $file = [System.IO.File]::Create((Join-Path $PWD 'source/gui/chiaking.ico'))
+          $icon.Save($file)
+          $file.Close()
+          $g.Dispose()
+          $bitmap.Dispose()
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
+        with:
+          msystem: MINGW64
+          update: true
+          install: git
+      - name: Compile and test Windows application
+        shell: msys2 {0}
+        run: |
+          cd source
+          bash senz/build-windows.sh
+      - name: Create Windows installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $compiler)) { throw 'Inno Setup unavailable' }
+          & $compiler source\senz\SENZPSN.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          Get-FileHash source\dist\SENZPSN-Setup-0.1.0-preview.exe -Algorithm SHA256 | Format-List | Out-File source\dist\INSTALLER-SHA256.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: SENZPSN-Windows-EXE
+          path: |
+            source/dist/*.exe
+            source/dist/*.zip
+            source/dist/*SHA256*.txt
+          if-no-files-found: error
+          retention-days: 14
