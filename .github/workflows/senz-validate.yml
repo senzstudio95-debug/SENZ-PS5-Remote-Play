@@ -13,53 +13,17 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: SENZPSN-Windows-EXE
-          run-id: 44270150533
+          name: SENZPSN-Installer-Checked
+          run-id: 44272959294
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: incoming
-      - name: Prepare final package documentation
-        shell: pwsh
-        run: |
-          Expand-Archive incoming/SENZPSN-0.1.0-preview-source.zip stage
-          Expand-Archive incoming/SENZPSN-0.1.0-preview-windows-x64.zip stage/SENZPSN/dist
-          $app = 'stage/SENZPSN/dist/SENZPSN'
-          Remove-Item "$app/SOURCE.zip" -ErrorAction SilentlyContinue
-          python -m pip install zstandard==0.23.0
-          if ($LASTEXITCODE -ne 0) { throw 'Decompressor installation failed' }
-          python -c "import urllib.request,hashlib,tarfile,io,pathlib; import zstandard as z; b=urllib.request.urlopen('https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-vulkan-loader-1~1.4.363.0-1-any.pkg.tar.zst').read(); assert hashlib.sha256(b).hexdigest()=='281fa31b1a023485d4fd04a092a8b5e9ca2f59804df7fcf9f2d4e5aaa5438af0'; t=tarfile.open(fileobj=io.BytesIO(z.ZstdDecompressor().decompress(b,max_output_size=16777216))); pathlib.Path('stage/SENZPSN/dist/SENZPSN/vulkan-1.dll').write_bytes(t.extractfile('mingw64/bin/vulkan-1.dll').read())"
-          if ($LASTEXITCODE -ne 0) { throw 'Vulkan runtime integrity check failed' }
-          $deploy = 'stage/SENZPSN/scripts/deploy-windows-msys2.sh'
-          (Get-Content $deploy -Raw).Replace('skip_dlls=("vulkan-1.dll")','skip_dlls=()') | Set-Content $deploy -Encoding utf8
-
-          $notes = @'
-          SENZPSN 0.1 Windows Preview
-          ==========================
-          This package contains the compiled Windows application. No MSYS2 or compiler is required to use it.
-          Open SENZPSN from the Start menu after installation.
-          Enable Remote Play on your PS5/PS4. Use the same network for initial pairing, or Connect PSN to sign in through Sony in your system browser.
-          For a blank screen, try the Start-menu OpenGL fallback shortcut.
-          Windows compilation, security tests including DPAPI, and upstream unit tests passed in build 44270150533.
-          Live PSN login, PS5/PS4 streaming, controllers and audio have not been tested against a real console for this preview.
-          This preview is unsigned. It is not certified by Sony and is not a malware-free guarantee.
-          RTX VSR and extra-frame generation are not implemented. Automatic software updates are not enabled.
-          The complete corresponding source is included in SOURCE.zip under the existing AGPL/OpenSSL-exception licenses. Build instructions are in the source BUILD-WINDOWS.cmd and senz/build-windows.sh.
-          '@
-          Copy-Item stage/SENZPSN/START-HERE.md stage/SENZPSN/senz/HISTORICAL-SOURCE-PREVIEW-NOTES.md
-          $notes | Set-Content stage/SENZPSN/START-HERE.md -Encoding utf8
-          $notes | Set-Content stage/SENZPSN/README.md -Encoding utf8
-          'Installer Windows kini sudah dibina. Klik dua kali Setup EXE, pilih Install, kemudian buka SENZPSN. Streaming PS5/PS4 sebenar belum diuji. Lihat START-HERE.md.' | Set-Content stage/SENZPSN/BACA-DULU.txt -Encoding utf8
-          $notes | Set-Content "$app/START-HERE.md" -Encoding utf8
-          python stage/SENZPSN/senz/package.py
-          if ($LASTEXITCODE -ne 0) { throw 'Source packaging failed' }
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" stage/SENZPSN/senz/SENZPSN.iss
-          if ($LASTEXITCODE -ne 0) { throw 'Installer packaging failed' }
       - name: Install and verify packaged executable
         shell: pwsh
         env:
           QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES: '1'
           SDL_AUDIODRIVER: dummy
         run: |
-          $setup = (Resolve-Path 'stage/SENZPSN/dist/SENZPSN-Setup-0.1.0-preview.exe').Path
+          $setup = (Resolve-Path 'incoming/SENZPSN-Setup-0.1.0-preview.exe').Path
           $dest = Join-Path $env:RUNNER_TEMP 'SENZPSN-Installed'
           $install = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$dest`"" -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
@@ -82,6 +46,9 @@ jobs:
         env:
           SDL_AUDIODRIVER: dummy
           QT_OPENGL: software
+          QT_QUICK_BACKEND: software
+          QT_FORCE_STDERR_LOGGING: '1'
+          QT_DEBUG_PLUGINS: '1'
         run: |
           $exe = Join-Path $env:RUNNER_TEMP 'SENZPSN-Installed/SENZPSN.exe'
           $process = Start-Process $exe -ArgumentList '--opengl' -PassThru -RedirectStandardOutput gui-output.txt -RedirectStandardError gui-errors.txt
