@@ -2,6 +2,7 @@ name: SENZPSN Windows EXE
 on:
   push:
     branches: [codex/senzpsn-windows-build]
+    paths: [senzpsn.patch.gz.b64, senz-icon.svg]
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,0 +1,107 @@
+name: Validate SENZPSN installer
+on:
+  push:
+    branches: [codex/senzpsn-windows-build]
+    paths: [.github/workflows/senz-validate.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: SENZPSN-Windows-EXE
+          run-id: 44270150533
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: incoming
+      - name: Prepare final package documentation
+        shell: pwsh
+        run: |
+          Expand-Archive incoming/SENZPSN-0.1.0-preview-source.zip stage
+          Expand-Archive incoming/SENZPSN-0.1.0-preview-windows-x64.zip stage/SENZPSN/dist
+          $app = 'stage/SENZPSN/dist/SENZPSN'
+          Remove-Item "$app/SOURCE.zip" -ErrorAction SilentlyContinue
+          $notes = @'
+          SENZPSN 0.1 Windows Preview
+          ==========================
+          This package contains the compiled Windows application. No MSYS2 or compiler is required to use it.
+          Open SENZPSN from the Start menu after installation.
+          Enable Remote Play on your PS5/PS4. Use the same network for initial pairing, or Connect PSN to sign in through Sony in your system browser.
+          For a blank screen, try the Start-menu OpenGL fallback shortcut.
+          Windows compilation, security tests including DPAPI, and upstream unit tests passed in build 44270150533.
+          Live PSN login, PS5/PS4 streaming, controllers and audio have not been tested against a real console for this preview.
+          This preview is unsigned. It is not certified by Sony and is not a malware-free guarantee.
+          RTX VSR and extra-frame generation are not implemented. Automatic software updates are not enabled.
+          The complete corresponding source is included in SOURCE.zip under the existing AGPL/OpenSSL-exception licenses. Build instructions are in the source BUILD-WINDOWS.cmd and senz/build-windows.sh.
+          '@
+          Copy-Item stage/SENZPSN/START-HERE.md stage/SENZPSN/senz/HISTORICAL-SOURCE-PREVIEW-NOTES.md
+          $notes | Set-Content stage/SENZPSN/START-HERE.md -Encoding utf8
+          $notes | Set-Content stage/SENZPSN/README.md -Encoding utf8
+          'Installer Windows kini sudah dibina. Klik dua kali Setup EXE, pilih Install, kemudian buka SENZPSN. Streaming PS5/PS4 sebenar belum diuji. Lihat START-HERE.md.' | Set-Content stage/SENZPSN/BACA-DULU.txt -Encoding utf8
+          $notes | Set-Content "$app/START-HERE.md" -Encoding utf8
+          python stage/SENZPSN/senz/package.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source packaging failed' }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" stage/SENZPSN/senz/SENZPSN.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Installer packaging failed' }
+      - name: Install and verify packaged executable
+        shell: pwsh
+        env:
+          QT_COMMAND_LINE_PARSER_NO_GUI_MESSAGE_BOXES: '1'
+          SDL_AUDIODRIVER: dummy
+        run: |
+          $setup = (Resolve-Path 'stage/SENZPSN/dist/SENZPSN-Setup-0.1.0-preview.exe').Path
+          $dest = Join-Path $env:RUNNER_TEMP 'SENZPSN-Installed'
+          $install = Start-Process $setup -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR=`"$dest`"" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer failed: $($install.ExitCode)" }
+          $exe = Join-Path $dest 'SENZPSN.exe'
+          if (-not (Test-Path $exe)) { throw 'Installed application missing' }
+          $stdout = Join-Path $PWD 'help-output.txt'
+          $stderr = Join-Path $PWD 'help-errors.txt'
+          $process = Start-Process $exe -ArgumentList '--help' -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (-not $process.WaitForExit(30000)) { Stop-Process -Id $process.Id -Force; throw 'Application help timed out' }
+          $process.Refresh()
+          Get-Content $stdout
+          Get-Content $stderr
+          if ($process.ExitCode -ne 0) { throw "Packaged executable failed: $($process.ExitCode)" }
+          'PASS: Windows per-user installer completed and installed application --help exited 0.' | Set-Content VALIDATION.txt
+          Get-FileHash $setup -Algorithm SHA256 | Format-List | Out-File INSTALLER-SHA256.txt
+          Copy-Item $setup .
+      - name: Observe GUI startup
+        continue-on-error: true
+        shell: pwsh
+        env:
+          SDL_AUDIODRIVER: dummy
+          QT_OPENGL: software
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'SENZPSN-Installed/SENZPSN.exe'
+          $process = Start-Process $exe -ArgumentList '--opengl' -PassThru -RedirectStandardOutput gui-output.txt -RedirectStandardError gui-errors.txt
+          Start-Sleep -Seconds 12
+          $process.Refresh()
+          if ($process.HasExited) { Get-Content gui-errors.txt; throw "GUI exited: $($process.ExitCode). GPU-capable machine may be required." }
+          "GUI process still running after 12 seconds. Window title: $($process.MainWindowTitle)" | Add-Content VALIDATION.txt
+          Add-Type -AssemblyName System.Windows.Forms
+          Add-Type -AssemblyName System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bitmap = New-Object System.Drawing.Bitmap $bounds.Width,$bounds.Height
+          $g = [System.Drawing.Graphics]::FromImage($bitmap)
+          $g.CopyFromScreen($bounds.Location,[System.Drawing.Point]::Empty,$bounds.Size)
+          $bitmap.Save((Join-Path $PWD 'gui-startup.png'))
+          $g.Dispose()
+          $bitmap.Dispose()
+          Stop-Process -Id $process.Id -Force
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: SENZPSN-Installer-Checked
+          path: |
+            SENZPSN-Setup-0.1.0-preview.exe
+            VALIDATION.txt
+            INSTALLER-SHA256.txt
+            help-*.txt
+            gui-*.txt
+            gui-startup.png
+          if-no-files-found: error
+          retention-days: 14
